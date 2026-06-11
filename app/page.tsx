@@ -19,7 +19,7 @@ export default function LandingPage() {
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
             <HardHat className="h-6 w-6 text-primary" />
-            <span className="font-bold text-lg">Maison Tracker</span>
+            <span className="font-bold text-lg">Construire</span>
           </div>
           <div className="flex gap-2">
             <Button variant="ghost" asChild><Link href="/auth/login">Connexion</Link></Button>
@@ -34,7 +34,7 @@ export default function LandingPage() {
           Pilotez votre construction<br className="hidden md:block" /> de A à Z
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-          Maison Tracker accompagne les particuliers qui font construire : checklist complète, suivi budgétaire, planning et documents centralisés.
+          Construire accompagne les particuliers qui font construire : checklist complète, suivi budgétaire, planning et documents centralisés.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Button size="lg" asChild><Link href="/auth/register">Créer mon projet gratuitement</Link></Button>
@@ -73,7 +73,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="border-t py-8 text-center text-sm text-muted-foreground">
-        © {new Date().getFullYear()} Maison Tracker — Fait avec ❤️ pour les futurs propriétaires
+        © {new Date().getFullYear()} Construire — Fait avec ❤️ pour les futurs propriétaires
       </footer>
     </div>
   );

@@ -50,11 +50,11 @@ self.addEventListener("push", (event) => {
   try {
     payload = event.data.json();
   } catch {
-    payload = { title: "Maison Tracker", body: event.data.text() };
+    payload = { title: "Construire", body: event.data.text() };
   }
 
   event.waitUntil(
-    self.registration.showNotification(payload.title ?? "Maison Tracker", {
+    self.registration.showNotification(payload.title ?? "Construire", {
       body: payload.body ?? "",
       icon: payload.icon ?? "/icons/icon-192x192.png",
       badge: payload.badge ?? "/icons/icon-192x192.png",

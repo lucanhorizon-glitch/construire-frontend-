@@ -80,7 +80,7 @@ export default function AdminSettingsPage() {
                 <Input
                   value={form.app_name ?? ""}
                   onChange={(e) => set("app_name", e.target.value)}
-                  placeholder="Maison Tracker"
+                  placeholder="Construire"
                 />
               </div>
               <div className="space-y-1.5">
@@ -89,7 +89,7 @@ export default function AdminSettingsPage() {
                   type="email"
                   value={form.support_email ?? ""}
                   onChange={(e) => set("support_email", e.target.value)}
-                  placeholder="support@maisontracker.fr"
+                  placeholder="support@construire.fr"
                 />
               </div>
             </CardContent>

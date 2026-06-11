@@ -114,7 +114,7 @@ export default function PwaPrompt() {
         {/* iOS instructions */}
         {state === "ios" ? (
           <div className="flex-1 space-y-2">
-            <p className="font-semibold text-sm">Installer Maison Tracker</p>
+            <p className="font-semibold text-sm">Installer Construire</p>
             <p className="text-xs text-muted-foreground leading-relaxed">
               Pour installer l&apos;app sur votre iPhone, appuyez sur{" "}
               <span className="inline-flex items-center gap-0.5 font-medium text-foreground">
@@ -134,7 +134,7 @@ export default function PwaPrompt() {
         ) : (
           /* Android / Chrome */
           <div className="flex-1">
-            <p className="font-semibold text-sm">Installer Maison Tracker</p>
+            <p className="font-semibold text-sm">Installer Construire</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Accédez à votre chantier directement depuis l&apos;écran d&apos;accueil, même hors ligne.
             </p>
