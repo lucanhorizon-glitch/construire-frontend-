@@ -10,7 +10,7 @@ const geistSans = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Construire",
+  title: "Suivi Construction",
   description: "Suivez votre projet de construction de A à Z",
   manifest: "/manifest.json",
 
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Construire",
+    title: "Suivi Construction",
     startupImage: [
       {
         url: "/icons/apple-touch-icon.png",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 
   // Open Graph
   openGraph: {
-    title: "Construire",
+    title: "Suivi Construction",
     description: "Suivez votre projet de construction de A à Z",
     type: "website",
   },
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "black-translucent",
-    "apple-mobile-web-app-title": "Construire",
+    "apple-mobile-web-app-title": "Suivi Construction",
     // IE / Windows tile
     "msapplication-TileColor": "#1E40AF",
     "msapplication-tap-highlight": "no",

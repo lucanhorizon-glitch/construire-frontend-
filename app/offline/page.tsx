@@ -13,7 +13,7 @@ export default function OfflinePage() {
 
       <h1 className="text-2xl font-bold mb-2">Vous êtes hors ligne</h1>
       <p className="text-muted-foreground max-w-sm mb-8">
-        Construire n&apos;a pas pu se connecter au serveur. Les données mises en cache restent disponibles.
+        Suivi Construction n&apos;a pas pu se connecter au serveur. Les données mises en cache restent disponibles.
         Les modifications (statuts, notes) seront synchronisées au retour de la connexion.
       </p>
 

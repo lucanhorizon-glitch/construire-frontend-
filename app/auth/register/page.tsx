@@ -53,7 +53,7 @@ export default function RegisterPage() {
         <div className="flex flex-col items-center gap-2">
           <div className="flex items-center gap-2">
             <HardHat className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold">Construire</span>
+            <span className="text-2xl font-bold">Suivi Construction</span>
           </div>
         </div>
 

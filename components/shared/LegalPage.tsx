@@ -32,7 +32,7 @@ export default function LegalPage({ legalKey, title }: Props) {
           </Link>
           <div className="flex items-center gap-2 ml-auto">
             <HardHat className="h-5 w-5 text-primary" />
-            <span className="font-bold text-sm">Construire</span>
+            <span className="font-bold text-sm">Suivi Construction</span>
           </div>
         </div>
       </header>

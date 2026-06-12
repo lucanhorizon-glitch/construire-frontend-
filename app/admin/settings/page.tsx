@@ -80,7 +80,7 @@ export default function AdminSettingsPage() {
                 <Input
                   value={form.app_name ?? ""}
                   onChange={(e) => set("app_name", e.target.value)}
-                  placeholder="Construire"
+                  placeholder="Suivi Construction"
                 />
               </div>
               <div className="space-y-1.5">

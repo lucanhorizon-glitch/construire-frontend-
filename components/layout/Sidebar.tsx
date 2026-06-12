@@ -48,7 +48,7 @@ export default function Sidebar() {
     <aside className="hidden lg:flex flex-col w-64 border-r bg-card h-screen sticky top-0">
       <div className="flex items-center gap-2 p-6 border-b">
         <HardHat className="h-6 w-6 text-primary" />
-        <span className="font-bold text-lg">Construire</span>
+        <span className="font-bold text-lg">Suivi Construction</span>
       </div>
 
       <nav className="flex-1 p-4 space-y-1">
