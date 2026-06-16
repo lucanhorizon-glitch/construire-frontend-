@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { Plus, Clock, Bell, Trash2, CalendarDays, Target, Download, RefreshCw } from "lucide-react";
+import { Plus, Clock, Bell, Trash2, CalendarDays, Target, Download, RefreshCw, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +30,6 @@ const emptyForm: EventForm = {
   title: "", description: "", date_start: "", date_end: "", reminder_days: "",
 };
 
-// A unified item that can be either a real event or a task deadline
 type AgendaItem =
   | { kind: "event"; date: Date; event: Event }
   | { kind: "task"; date: Date; task: Task };
@@ -39,6 +38,34 @@ function dateLabel(d: Date) {
   if (isToday(d)) return "Aujourd'hui";
   if (isTomorrow(d)) return "Demain";
   return format(d, "EEEE d MMMM", { locale: fr });
+}
+
+function taskCardStyle(task: Task, date: Date): { container: string; icon: string; badge: string; badgeLabel: string } {
+  const isOverdue   = isPast(date) && task.status !== "done" && task.status !== "na";
+  const isConfirmed = task.status === "done" || !!task.date_real;
+
+  if (isOverdue) {
+    return {
+      container: "border-orange-200 bg-orange-50/50 dark:border-orange-800 dark:bg-orange-950/20",
+      icon:      "text-orange-500",
+      badge:     "border-orange-300 text-orange-600",
+      badgeLabel: "Retard",
+    };
+  }
+  if (isConfirmed) {
+    return {
+      container: "border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20",
+      icon:      "text-emerald-500",
+      badge:     "border-emerald-300 text-emerald-600",
+      badgeLabel: "Confirmé",
+    };
+  }
+  return {
+    container: "border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20",
+    icon:      "text-blue-500",
+    badge:     "border-blue-300 text-blue-600",
+    badgeLabel: "Théorique",
+  };
 }
 
 export default function AgendaPage() {
@@ -50,6 +77,7 @@ export default function AgendaPage() {
   const [newDate, setNewDate] = useState("");
   const [calendarUrl, setCalendarUrl] = useState<{ url: string; webcal_url: string } | null>(null);
   const [loadingCalUrl, setLoadingCalUrl] = useState(false);
+  const [showTheoretical, setShowTheoretical] = useState(true);
 
   const { data: eventsData, isLoading: eventsLoading } = useQuery({
     queryKey: ["project-events", id],
@@ -97,22 +125,35 @@ export default function AgendaPage() {
     onError: () => toast.error("Erreur lors de la mise à jour"),
   });
 
-  // Build unified list of events + task deadlines
   const events = eventsData?.data ?? [];
   const allTasks: Task[] = (tasksData?.data ?? []).flatMap((p) => p.tasks ?? []);
-  const taskDeadlines = allTasks.filter((t) => t.date_target);
+
+  // Theoretical mode: tasks with date_target; confirmed mode: tasks with date_real
+  const taskDeadlines = allTasks.filter((t) =>
+    showTheoretical ? !!t.date_target : !!t.date_real
+  );
 
   const items: AgendaItem[] = [
     ...events.map((e) => ({ kind: "event" as const, date: new Date(e.date_start), event: e })),
     ...taskDeadlines.map((t) => ({
       kind: "task" as const,
-      date: new Date(t.date_target!),
+      date: new Date(showTheoretical ? t.date_target! : t.date_real!),
       task: t,
     })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const upcoming = items.filter((i) => !isPast(i.date));
-  const past = items.filter((i) => isPast(i.date));
+  const past     = items.filter((i) => isPast(i.date));
+
+  // Timeline summary from all date_target values
+  const allDateTargets = allTasks
+    .filter((t) => t.date_target)
+    .map((t) => new Date(t.date_target!).getTime());
+  const firstTarget    = allDateTargets.length ? new Date(Math.min(...allDateTargets)) : null;
+  const lastTarget     = allDateTargets.length ? new Date(Math.max(...allDateTargets)) : null;
+  const durationMonths = firstTarget && lastTarget
+    ? Math.ceil((lastTarget.getTime() - firstTarget.getTime()) / (1000 * 60 * 60 * 24 * 30))
+    : null;
 
   async function loadCalendarUrl() {
     setLoadingCalUrl(true);
@@ -133,7 +174,7 @@ export default function AgendaPage() {
   }
 
   function renderItems(list: AgendaItem[]) {
-    return list.map((item, idx) => {
+    return list.map((item) => {
       if (item.kind === "event") {
         const { event } = item;
         return (
@@ -178,25 +219,23 @@ export default function AgendaPage() {
         );
       }
 
-      // Task deadline item
       const { task } = item;
+      const style     = taskCardStyle(task, item.date);
       const isEditing = editingTaskDate?.taskId === task.id;
 
       return (
-        <Card
-          key={`t-${task.id}`}
-          className={`border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20 ${isPast(item.date) ? "opacity-60" : ""}`}
-        >
+        <Card key={`t-${task.id}`} className={`${style.container} ${isPast(item.date) && task.status !== "done" ? "opacity-80" : ""}`}>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-start gap-3">
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <Target className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                  <p className="font-medium text-sm text-blue-700 dark:text-blue-300">
-                    {task.title}
-                  </p>
-                  <Badge variant="outline" className="text-xs border-blue-300 text-blue-600">
-                    Échéance tâche
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  {task.status === "done"
+                    ? <CheckCircle2 className={`h-3.5 w-3.5 ${style.icon} shrink-0`} />
+                    : <Target className={`h-3.5 w-3.5 ${style.icon} shrink-0`} />
+                  }
+                  <p className="font-medium text-sm">{task.title}</p>
+                  <Badge variant="outline" className={`text-xs ${style.badge}`}>
+                    {style.badgeLabel}
                   </Badge>
                   {isToday(item.date) && (
                     <Badge variant="destructive" className="text-xs">{"Aujourd'hui"}</Badge>
@@ -233,10 +272,10 @@ export default function AgendaPage() {
                   </div>
                 ) : (
                   <button
-                    className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline mt-0.5"
+                    className={`flex items-center gap-1.5 text-xs hover:underline mt-0.5 ${style.icon}`}
                     onClick={() => {
-                      setEditingTaskDate({ taskId: task.id, current: task.date_target! });
-                      setNewDate(task.date_target!);
+                      setEditingTaskDate({ taskId: task.id, current: task.date_target ?? "" });
+                      setNewDate(task.date_target ?? "");
                     }}
                   >
                     <CalendarDays className="h-3 w-3" />
@@ -256,6 +295,15 @@ export default function AgendaPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-2xl font-bold">Agenda</h2>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            variant={showTheoretical ? "default" : "outline"}
+            className="gap-2"
+            onClick={() => setShowTheoretical((v) => !v)}
+          >
+            <Target className="h-4 w-4" />
+            Planning théorique
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -284,10 +332,26 @@ export default function AgendaPage() {
         </div>
       </div>
 
+      {/* Timeline summary */}
+      {showTheoretical && firstTarget && lastTarget && durationMonths !== null && (
+        <div className="p-3 rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
+          <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+            <Target className="h-4 w-4 shrink-0" />
+            <span>
+              Début prévu : <strong>{format(firstTarget, "d MMM yyyy", { locale: fr })}</strong>
+              {" → "}
+              Fin prévue : <strong>{format(lastTarget, "d MMM yyyy", { locale: fr })}</strong>
+              {" — "}
+              Durée totale : <strong>{durationMonths} mois</strong>
+            </span>
+          </div>
+        </div>
+      )}
+
       {calendarUrl && (
         <div className="p-3 rounded-lg border bg-muted/50 space-y-2">
           <p className="text-xs font-medium text-muted-foreground">
-            Lien d'abonnement calendrier (webcal://). Copiez-le dans votre app calendrier.
+            Lien d&apos;abonnement calendrier (webcal://). Copiez-le dans votre app calendrier.
           </p>
           <div className="flex items-center gap-2">
             <input
@@ -312,7 +376,7 @@ export default function AgendaPage() {
             href={calendarUrl.webcal_url}
             className="text-xs text-primary hover:underline block"
           >
-            Ouvrir dans l'app calendrier →
+            Ouvrir dans l&apos;app calendrier →
           </a>
         </div>
       )}
@@ -324,7 +388,11 @@ export default function AgendaPage() {
       ) : items.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p>Aucun événement planifié</p>
+          <p>
+            {showTheoretical
+              ? "Aucune date théorique calculée — ajoutez une date de début dans les paramètres du projet"
+              : "Aucune date confirmée"}
+          </p>
         </div>
       ) : (
         <div className="space-y-6">

@@ -19,7 +19,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, ChevronDown, ChevronRight, Star, Euro, Paperclip, Plus, X } from "lucide-react";
+import { GripVertical, ChevronDown, ChevronRight, Star, Euro, Paperclip, Plus, X, Lock, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,7 +29,6 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import TaskStatusBadge from "@/components/project/TaskStatusBadge";
-import PremiumGate from "@/components/project/PremiumGate";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import type { Phase, Project, Task, TaskStatus } from "@/lib/types";
@@ -43,6 +42,8 @@ const statusOptions: { value: TaskStatus | "all"; label: string }[] = [
   { value: "blocked", label: "Bloqué" },
   { value: "na", label: "N/A" },
 ];
+
+// ── Full task row (premium or first 3 free) ───────────────────────────────────
 
 interface TaskRowProps {
   task: Task;
@@ -181,6 +182,28 @@ function TaskRow({ task, projectId, sortable }: TaskRowProps) {
   );
 }
 
+// ── Locked task row (free tier, tasks beyond index 3) ─────────────────────────
+
+function LockedTaskRow({ task }: { task: Task }) {
+  return (
+    <div className="flex items-center gap-3 p-3 bg-muted/20 rounded-lg border border-dashed select-none">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-muted-foreground truncate">{task.title}</p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <div className="h-2.5 w-16 rounded bg-muted/70" />
+          <div className="h-2.5 w-10 rounded bg-muted/70" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Lock className="h-3.5 w-3.5 text-muted-foreground/40" />
+        <div className="h-7 w-24 rounded bg-muted/60" />
+      </div>
+    </div>
+  );
+}
+
+// ── Rooms list ────────────────────────────────────────────────────────────────
+
 const RENOVATION_ROOMS = [
   "Cuisine",
   "Salle de bain principale",
@@ -217,15 +240,20 @@ function makeEmptyForm(phaseTitle: string): NewTaskForm {
   };
 }
 
+// ── Phase group ───────────────────────────────────────────────────────────────
+
 interface PhaseGroupProps {
   phase: Phase;
   projectId: string;
   filterStatus: TaskStatus | "all";
   isOpen: boolean;
   onToggle: () => void;
+  isPremium: boolean;
 }
 
-function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle }: PhaseGroupProps) {
+const FREE_VISIBLE_TASKS = 3;
+
+function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle, isPremium }: PhaseGroupProps) {
   const queryClient = useQueryClient();
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskForm, setNewTaskForm] = useState<NewTaskForm>(() => makeEmptyForm(phase.title));
@@ -237,6 +265,11 @@ function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle }: PhaseG
       : tasks.filter((t) => t.status === filterStatus);
   const done      = tasks.filter((t) => t.status === "done").length;
   const countable = tasks.filter((t) => t.status !== "na").length;
+
+  // Split into visible and locked for free users
+  const visibleFiltered = isPremium ? filtered : filtered.slice(0, FREE_VISIBLE_TASKS);
+  const lockedFiltered  = isPremium ? [] : filtered.slice(FREE_VISIBLE_TASKS);
+  const hasLocked       = !isPremium && tasks.length > FREE_VISIBLE_TASKS;
 
   const addTask = useMutation({
     mutationFn: () =>
@@ -274,6 +307,12 @@ function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle }: PhaseG
           <Badge variant="outline" className="text-xs">
             {done}/{countable}
           </Badge>
+          {hasLocked && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              <Lock className="h-2.5 w-2.5" />
+              {FREE_VISIBLE_TASKS}/{tasks.length} visibles
+            </Badge>
+          )}
         </div>
         {isOpen ? (
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -285,17 +324,20 @@ function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle }: PhaseG
       {isOpen && (
         <>
           <SortableContext
-            items={filtered.map((t) => t.id)}
+            items={visibleFiltered.map((t) => t.id)}
             strategy={verticalListSortingStrategy}
           >
             <div className="space-y-1.5 pl-2">
-              {filtered.map((task) => (
+              {visibleFiltered.map((task) => (
                 <TaskRow
                   key={task.id}
                   task={task}
                   projectId={projectId}
-                  sortable={filterStatus === "all"}
+                  sortable={filterStatus === "all" && isPremium}
                 />
+              ))}
+              {lockedFiltered.map((task) => (
+                <LockedTaskRow key={task.id} task={task} />
               ))}
               {filtered.length === 0 && (
                 <p className="text-sm text-muted-foreground py-3 text-center">
@@ -427,6 +469,8 @@ function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle }: PhaseG
   );
 }
 
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function TasksPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
@@ -452,6 +496,12 @@ export default function TasksPage() {
 
   const phases    = data?.data ?? [];
   const isPremium = projectData?.data?.is_premium ?? false;
+
+  const stripeCheckout = useMutation({
+    mutationFn: () => api.post<{ url: string }>("/stripe/checkout", { project_id: Number(id) }),
+    onSuccess: (res) => { if (res?.url) window.location.href = res.url; },
+    onError: () => toast.error("Erreur lors du paiement"),
+  });
 
   const effectiveOpenId =
     openPhaseId !== null
@@ -515,8 +565,10 @@ export default function TasksPage() {
     );
   }
 
+  const hasLockedTasks = !isPremium && phases.some((p) => (p.tasks?.length ?? 0) > FREE_VISIBLE_TASKS);
+
   return (
-    <div className="p-6 lg:p-8 pb-52 max-w-6xl space-y-6">
+    <div className="p-6 lg:p-8 pb-36 max-w-6xl space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-2xl font-bold">Tâches</h2>
         <div className="flex items-center gap-2">
@@ -544,7 +596,7 @@ export default function TasksPage() {
         onDragEnd={handleDragEnd}
       >
         <div className="space-y-6">
-          {phases.slice(0, 3).map((phase) => (
+          {phases.map((phase) => (
             <PhaseGroup
               key={phase.id}
               phase={phase}
@@ -552,30 +604,29 @@ export default function TasksPage() {
               filterStatus={filterStatus}
               isOpen={effectiveOpenId === phase.id}
               onToggle={() => togglePhase(phase.id)}
+              isPremium={isPremium}
             />
           ))}
-          {phases.length > 3 && (
-            <PremiumGate
-              isPremium={isPremium}
-              projectId={Number(id)}
-              feature="Phases avancées — débloquez l'intégralité du planning"
-            >
-              <div className="space-y-6">
-                {phases.slice(3).map((phase) => (
-                  <PhaseGroup
-                    key={phase.id}
-                    phase={phase}
-                    projectId={id}
-                    filterStatus={filterStatus}
-                    isOpen={false}
-                    onToggle={() => {}}
-                  />
-                ))}
-              </div>
-            </PremiumGate>
-          )}
         </div>
       </DndContext>
+
+      {/* Sticky upgrade CTA for free users */}
+      {hasLockedTasks && (
+        <div className="fixed bottom-0 left-0 right-0 z-20 px-4 py-4 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-none">
+          <div className="max-w-6xl mx-auto pointer-events-auto">
+            <button
+              onClick={() => stripeCheckout.mutate()}
+              disabled={stripeCheckout.isPending}
+              className="w-full py-3.5 px-6 bg-primary text-primary-foreground rounded-xl font-semibold shadow-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 text-sm"
+            >
+              <Zap className="h-4 w-4" />
+              {stripeCheckout.isPending
+                ? "Redirection…"
+                : "Débloquer toutes les étapes — 14,99 €"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

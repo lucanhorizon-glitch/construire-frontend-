@@ -141,7 +141,7 @@ function fileToBase64(file: File): Promise<string> {
 
 // ── Wizard steps ──────────────────────────────────────────────────────────────
 
-const CONSTRUCTION_STEPS = ["Profil", "Type", "Informations", "Budget & dates", "Modèle"];
+const CONSTRUCTION_STEPS = ["Profil", "Type", "Votre maison", "Informations", "Budget & dates", "Modèle"];
 const RENOVATION_STEPS   = ["Profil", "Type", "Informations", "Budget & dates", "Réglementation", "Pièces & tâches", "Récapitulatif"];
 
 // ── RoomTaskPicker ────────────────────────────────────────────────────────────
@@ -336,6 +336,11 @@ export default function NewProjectPage() {
     date_end_target: "",
   });
 
+  // Step 2 (construction): new building questions
+  const [floors, setFloors]             = useState<0 | 1 | 2 | null>(null);
+  const [surfaceRange, setSurfaceRange] = useState<"small" | "medium" | "large" | "xlarge" | "">("");
+  const [terrainStatus, setTerrainStatus] = useState<"not_yet" | "acquiring" | "purchased" | "">("");
+
   // Step 4 (reno): legal questions
   const [permitType, setPermitType]       = useState<PermitType | "">("");
   const [hasGrosOeuvre, setHasGrosOeuvre] = useState<boolean | null>(null);
@@ -359,10 +364,10 @@ export default function NewProjectPage() {
   function canAdvance() {
     if (step === 0) return ownerType !== "";
     if (step === 1) return projectType !== "";
-    if (step === 2) return form.name.trim() !== "";
-    if (step === 4 && projectType === "renovation") {
-      return permitType !== "" && hasGrosOeuvre !== null;
-    }
+    if (step === 2 && projectType === "construction") return floors !== null && surfaceRange !== "" && terrainStatus !== "";
+    if (step === 2 && projectType === "renovation") return form.name.trim() !== "";
+    if (step === 3 && projectType === "construction") return form.name.trim() !== "";
+    if (step === 4 && projectType === "renovation") return permitType !== "" && hasGrosOeuvre !== null;
     return true;
   }
 
@@ -409,6 +414,9 @@ export default function NewProjectPage() {
       if (form.date_end_target) payload.date_end_target  = form.date_end_target;
       if (projectType === "renovation" && permitType)    payload.permit_type = permitType;
       if (projectType === "renovation" && hasGrosOeuvre !== null) payload.has_gros_oeuvre = hasGrosOeuvre;
+      if (projectType === "construction" && floors !== null)  payload.floors         = floors;
+      if (projectType === "construction" && surfaceRange)     payload.surface_range  = surfaceRange;
+      if (projectType === "construction" && terrainStatus)    payload.terrain_status = terrainStatus;
 
       const res     = await api.post<{ data: Project }>("/projects", payload);
       const project = res.data;
@@ -706,8 +714,116 @@ export default function NewProjectPage() {
             </>
           )}
 
-          {/* ── Step 2: General info ──────────────────────────────────────── */}
-          {step === 2 && (
+          {/* ── Step 2 (construction): Building questions ─────────────────── */}
+          {step === 2 && projectType === "construction" && (
+            <>
+              <CardHeader>
+                <CardTitle>Votre maison</CardTitle>
+                <CardDescription>Ces informations adaptent automatiquement le planning et les durées</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Question A: Floors */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Votre projet comporte-t-il un étage ?</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      { value: 0 as const, label: "Plain-pied" },
+                      { value: 1 as const, label: "R+1" },
+                      { value: 2 as const, label: "R+2 ou plus" },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setFloors(opt.value)}
+                        className={cn(
+                          "py-3 rounded-lg border-2 text-sm font-medium transition-all",
+                          floors === opt.value
+                            ? "border-primary bg-primary/5 text-primary"
+                            : "border-muted hover:border-primary/40"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Question B: Surface */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Quelle est la surface habitable prévue ?</Label>
+                  <div className="space-y-2">
+                    {([
+                      { value: "small" as const, label: "Moins de 80 m²" },
+                      { value: "medium" as const, label: "80 à 120 m²" },
+                      { value: "large" as const, label: "120 à 160 m²" },
+                      { value: "xlarge" as const, label: "Plus de 160 m²" },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setSurfaceRange(opt.value)}
+                        className={cn(
+                          "w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border-2 text-sm transition-all",
+                          surfaceRange === opt.value
+                            ? "border-primary bg-primary/5"
+                            : "border-muted hover:border-primary/40"
+                        )}
+                      >
+                        <div className={cn(
+                          "h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center",
+                          surfaceRange === opt.value ? "border-primary" : "border-muted-foreground/40"
+                        )}>
+                          {surfaceRange === opt.value && <div className="h-2 w-2 rounded-full bg-primary" />}
+                        </div>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {surfaceRange === "xlarge" && ownerType === "particulier" && (
+                    <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <p>Pour une surface supérieure à 150 m², le recours à un architecte est obligatoire (Art. R431-2 Code de l&apos;urbanisme).</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Question C: Terrain */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Avez-vous déjà votre terrain ?</Label>
+                  <div className="space-y-2">
+                    {([
+                      { value: "purchased" as const, label: "Oui, terrain acheté" },
+                      { value: "acquiring" as const, label: "En cours d'acquisition" },
+                      { value: "not_yet" as const, label: "Pas encore" },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setTerrainStatus(opt.value)}
+                        className={cn(
+                          "w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border-2 text-sm transition-all",
+                          terrainStatus === opt.value
+                            ? "border-primary bg-primary/5"
+                            : "border-muted hover:border-primary/40"
+                        )}
+                      >
+                        <div className={cn(
+                          "h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center",
+                          terrainStatus === opt.value ? "border-primary" : "border-muted-foreground/40"
+                        )}>
+                          {terrainStatus === opt.value && <div className="h-2 w-2 rounded-full bg-primary" />}
+                        </div>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </>
+          )}
+
+          {/* ── Step 2 (renovation) / Step 3 (construction): General info ─── */}
+          {((step === 2 && projectType === "renovation") || (step === 3 && projectType === "construction")) && (
             <>
               <CardHeader>
                 <CardTitle>Informations générales</CardTitle>
@@ -735,8 +851,8 @@ export default function NewProjectPage() {
             </>
           )}
 
-          {/* ── Step 3: Budget & dates ────────────────────────────────────── */}
-          {step === 3 && (
+          {/* ── Step 3 (renovation) / Step 4 (construction): Budget & dates ─ */}
+          {((step === 3 && projectType === "renovation") || (step === 4 && projectType === "construction")) && (
             <>
               <CardHeader>
                 <CardTitle>Budget & calendrier</CardTitle>
@@ -860,8 +976,8 @@ export default function NewProjectPage() {
             </>
           )}
 
-          {/* ── Step 4 (construction): Template ──────────────────────────── */}
-          {step === 4 && projectType === "construction" && (
+          {/* ── Step 5 (construction): Template ──────────────────────────── */}
+          {step === 5 && projectType === "construction" && (
             <>
               <CardHeader>
                 <CardTitle>Modèle de construction</CardTitle>

@@ -40,6 +40,9 @@ export interface Project {
   owner_type?: OwnerType;
   permit_type?: PermitType | null;
   has_gros_oeuvre?: boolean | null;
+  floors?: number | null;
+  surface_range?: "small" | "medium" | "large" | "xlarge" | null;
+  terrain_status?: "not_yet" | "acquiring" | "purchased" | null;
   stats?: ProjectStats;
   // deprecated flat fields — kept for backward compat
   tasks_total?: number;
