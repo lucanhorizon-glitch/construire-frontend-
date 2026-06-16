@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { HardHat } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
@@ -45,6 +45,48 @@ export default function ResetPasswordPage() {
   }
 
   return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Nouveau mot de passe</CardTitle>
+        <CardDescription>Choisissez un nouveau mot de passe pour votre compte</CardDescription>
+      </CardHeader>
+      <form onSubmit={handleSubmit}>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="password">Nouveau mot de passe</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="8 caractères minimum"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password_confirmation">Confirmer le mot de passe</Label>
+            <Input
+              id="password_confirmation"
+              type="password"
+              value={passwordConfirmation}
+              onChange={(e) => setPasswordConfirmation(e.target.value)}
+              required
+            />
+          </div>
+        </CardContent>
+        <CardFooter>
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Réinitialisation…" : "Réinitialiser le mot de passe"}
+          </Button>
+        </CardFooter>
+      </form>
+    </Card>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="flex flex-col items-center gap-2">
@@ -53,44 +95,9 @@ export default function ResetPasswordPage() {
             <span className="text-2xl font-bold">Suivi Construction</span>
           </div>
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Nouveau mot de passe</CardTitle>
-            <CardDescription>Choisissez un nouveau mot de passe pour votre compte</CardDescription>
-          </CardHeader>
-          <form onSubmit={handleSubmit}>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="password">Nouveau mot de passe</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="8 caractères minimum"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password_confirmation">Confirmer le mot de passe</Label>
-                <Input
-                  id="password_confirmation"
-                  type="password"
-                  value={passwordConfirmation}
-                  onChange={(e) => setPasswordConfirmation(e.target.value)}
-                  required
-                />
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Réinitialisation…" : "Réinitialiser le mot de passe"}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
+        <Suspense fallback={<div>Chargement...</div>}>
+          <ResetPasswordForm />
+        </Suspense>
       </div>
     </div>
   );
