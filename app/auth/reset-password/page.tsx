@@ -1,35 +1,44 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { HardHat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { useAuthStore } from "@/store/authStore";
 import { toast } from "sonner";
-import type { AuthResponse } from "@/lib/types";
 
-export default function LoginPage() {
+export default function ResetPasswordPage() {
   const router = useRouter();
-  const setAuth = useAuthStore((s) => s.setAuth);
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token") ?? "";
+  const email = searchParams.get("email") ?? "";
+
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (password !== passwordConfirmation) {
+      toast.error("Les mots de passe ne correspondent pas");
+      return;
+    }
     setLoading(true);
     try {
-      const res = await api.post<AuthResponse>("/auth/login", { email, password });
-      setAuth(res.token, res.user);
-      router.push("/dashboard");
+      await api.post("/auth/reset-password", {
+        token,
+        email,
+        password,
+        password_confirmation: passwordConfirmation,
+      });
+      toast.success("Mot de passe réinitialisé avec succès");
+      router.push("/auth/login");
     } catch (err: unknown) {
       const error = err as { message?: string };
-      toast.error(error?.message ?? "Identifiants incorrects");
+      toast.error(error?.message ?? "Une erreur est survenue");
     } finally {
       setLoading(false);
     }
@@ -47,48 +56,38 @@ export default function LoginPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Connexion</CardTitle>
-            <CardDescription>Accédez à votre espace de suivi de construction</CardDescription>
+            <CardTitle>Nouveau mot de passe</CardTitle>
+            <CardDescription>Choisissez un nouveau mot de passe pour votre compte</CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="vous@exemple.fr"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Mot de passe</Label>
-                  <Link href="/auth/forgot-password" className="text-sm text-primary hover:underline">
-                    Mot de passe oublié ?
-                  </Link>
-                </div>
+                <Label htmlFor="password">Nouveau mot de passe</Label>
                 <Input
                   id="password"
                   type="password"
+                  placeholder="8 caractères minimum"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password_confirmation">Confirmer le mot de passe</Label>
+                <Input
+                  id="password_confirmation"
+                  type="password"
+                  value={passwordConfirmation}
+                  onChange={(e) => setPasswordConfirmation(e.target.value)}
                   required
                 />
               </div>
             </CardContent>
-            <CardFooter className="flex flex-col gap-3">
+            <CardFooter>
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Connexion…" : "Se connecter"}
+                {loading ? "Réinitialisation…" : "Réinitialiser le mot de passe"}
               </Button>
-              <p className="text-sm text-muted-foreground text-center">
-                Pas encore de compte ?{" "}
-                <Link href="/auth/register" className="text-primary hover:underline font-medium">
-                  Créer un compte
-                </Link>
-              </p>
             </CardFooter>
           </form>
         </Card>
