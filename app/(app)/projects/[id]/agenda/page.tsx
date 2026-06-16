@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { Plus, Clock, Bell, Trash2, CalendarDays, Target, Download, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Plus, Clock, Bell, Trash2, CalendarDays, Target, Download, RefreshCw, CheckCircle2, AlertTriangle, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,9 +14,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import type { Event, Phase, Task } from "@/lib/types";
+import type { Event, Phase, Project, Task } from "@/lib/types";
 import { format, isToday, isTomorrow, isPast } from "date-fns";
 import { fr } from "date-fns/locale";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 interface EventForm {
   title: string;
@@ -40,33 +42,53 @@ function dateLabel(d: Date) {
   return format(d, "EEEE d MMMM", { locale: fr });
 }
 
-function taskCardStyle(task: Task, date: Date): { container: string; icon: string; badge: string; badgeLabel: string } {
+function taskCardStyle(task: Task, date: Date) {
   const isOverdue   = isPast(date) && task.status !== "done" && task.status !== "na";
   const isConfirmed = task.status === "done" || !!task.date_real;
-
-  if (isOverdue) {
-    return {
-      container: "border-orange-200 bg-orange-50/50 dark:border-orange-800 dark:bg-orange-950/20",
-      icon:      "text-orange-500",
-      badge:     "border-orange-300 text-orange-600",
-      badgeLabel: "Retard",
-    };
-  }
-  if (isConfirmed) {
-    return {
-      container: "border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20",
-      icon:      "text-emerald-500",
-      badge:     "border-emerald-300 text-emerald-600",
-      badgeLabel: "Confirmé",
-    };
-  }
-  return {
-    container: "border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20",
-    icon:      "text-blue-500",
-    badge:     "border-blue-300 text-blue-600",
-    badgeLabel: "Théorique",
-  };
+  if (isOverdue)   return { container: "border-orange-200 bg-orange-50/50 dark:border-orange-800 dark:bg-orange-950/20", icon: "text-orange-500", badge: "border-orange-300 text-orange-600", label: "Retard" };
+  if (isConfirmed) return { container: "border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20", icon: "text-emerald-500", badge: "border-emerald-300 text-emerald-600", label: "Confirmé" };
+  return { container: "border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20", icon: "text-blue-500", badge: "border-blue-300 text-blue-600", label: "Théorique" };
 }
+
+function getMilestoneWarnings(task: Task): string[] {
+  const warnings: string[] = [];
+  if (!task.date_target) return warnings;
+
+  const d   = new Date(task.date_target);
+  const m   = d.getMonth() + 1;
+  const day = d.getDate();
+
+  if ((m === 12 && day >= 15) || (m === 1 && day <= 5)) {
+    warnings.push("⚠️ Période de fêtes — vérifiez la disponibilité de vos intervenants");
+  }
+  if ((m === 7 && day >= 14) || (m === 8 && day <= 20)) {
+    warnings.push("⚠️ Congés d'été — délais probables");
+  }
+  if ((task.duration_days ?? 0) > 21) {
+    warnings.push("ℹ️ Étape longue — prévoyez des points d'avancement réguliers avec votre prestataire");
+  }
+  return warnings;
+}
+
+// ── Pedagogy banner ───────────────────────────────────────────────────────────
+
+function PedagoBanner({ variant, children }: { variant: "warning" | "info" | "tip"; children: React.ReactNode }) {
+  const styles = {
+    warning: "border-amber-200 bg-amber-50/80 dark:border-amber-800 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300",
+    info:    "border-blue-200 bg-blue-50/80 dark:border-blue-800 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300",
+    tip:     "border-emerald-200 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300",
+  };
+  const icons = { warning: AlertTriangle, info: Info, tip: Info };
+  const Icon = icons[variant];
+  return (
+    <div className={`flex items-start gap-3 p-3 rounded-lg border text-xs ${styles[variant]}`}>
+      <Icon className="h-4 w-4 shrink-0 mt-0.5" />
+      <p className="leading-relaxed">{children}</p>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AgendaPage() {
   const { id } = useParams<{ id: string }>();
@@ -78,6 +100,11 @@ export default function AgendaPage() {
   const [calendarUrl, setCalendarUrl] = useState<{ url: string; webcal_url: string } | null>(null);
   const [loadingCalUrl, setLoadingCalUrl] = useState(false);
   const [showTheoretical, setShowTheoretical] = useState(true);
+
+  const { data: projectData } = useQuery({
+    queryKey: ["project", id],
+    queryFn: () => api.get<{ data: Project }>(`/projects/${id}`),
+  });
 
   const { data: eventsData, isLoading: eventsLoading } = useQuery({
     queryKey: ["project-events", id],
@@ -125,10 +152,12 @@ export default function AgendaPage() {
     onError: () => toast.error("Erreur lors de la mise à jour"),
   });
 
-  const events = eventsData?.data ?? [];
-  const allTasks: Task[] = (tasksData?.data ?? []).flatMap((p) => p.tasks ?? []);
+  const project   = projectData?.data;
+  const events    = eventsData?.data ?? [];
+  const phases    = tasksData?.data ?? [];
+  const allTasks  = phases.flatMap((p) => p.tasks ?? []) as Task[];
 
-  // Theoretical mode: tasks with date_target; confirmed mode: tasks with date_real
+  // Theoretical vs confirmed toggle
   const taskDeadlines = allTasks.filter((t) =>
     showTheoretical ? !!t.date_target : !!t.date_real
   );
@@ -145,15 +174,24 @@ export default function AgendaPage() {
   const upcoming = items.filter((i) => !isPast(i.date));
   const past     = items.filter((i) => isPast(i.date));
 
-  // Timeline summary from all date_target values
-  const allDateTargets = allTasks
-    .filter((t) => t.date_target)
-    .map((t) => new Date(t.date_target!).getTime());
-  const firstTarget    = allDateTargets.length ? new Date(Math.min(...allDateTargets)) : null;
-  const lastTarget     = allDateTargets.length ? new Date(Math.max(...allDateTargets)) : null;
+  // Timeline summary
+  const allTargets    = allTasks.filter((t) => t.date_target).map((t) => new Date(t.date_target!).getTime());
+  const firstTarget   = allTargets.length ? new Date(Math.min(...allTargets)) : null;
+  const lastTarget    = allTargets.length ? new Date(Math.max(...allTargets)) : null;
   const durationMonths = firstTarget && lastTarget
     ? Math.ceil((lastTarget.getTime() - firstTarget.getTime()) / (1000 * 60 * 60 * 24 * 30))
     : null;
+
+  // ── Pedagogy banner conditions ────────────────────────────────────────────
+  const endTarget  = project?.date_end_target;
+  const endDate    = endTarget ? new Date(endTarget) : null;
+  const endMonth   = endDate ? endDate.getMonth() + 1 : null;
+  const isSummerEnd = endMonth !== null && endMonth >= 6 && endMonth <= 9;
+
+  const hasGrosOeuvrePhase = phases.some((p) =>
+    p.title.toLowerCase().includes("gros") || p.title.toLowerCase().includes("oeuvre")
+  );
+  const isConstruction = project?.type === "neuf";
 
   async function loadCalendarUrl() {
     setLoadingCalUrl(true);
@@ -184,9 +222,7 @@ export default function AgendaPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <p className="font-medium text-sm">{event.title}</p>
-                    {isToday(item.date) && (
-                      <Badge variant="destructive" className="text-xs">{"Aujourd'hui"}</Badge>
-                    )}
+                    {isToday(item.date) && <Badge variant="destructive" className="text-xs">{"Aujourd'hui"}</Badge>}
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <CalendarDays className="h-3 w-3" />
@@ -201,16 +237,9 @@ export default function AgendaPage() {
                       Rappel {event.reminder_days}j avant
                     </div>
                   )}
-                  {event.description && (
-                    <p className="text-xs text-muted-foreground mt-1">{event.description}</p>
-                  )}
+                  {event.description && <p className="text-xs text-muted-foreground mt-1">{event.description}</p>}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
-                  onClick={() => remove.mutate(event.id)}
-                >
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0" onClick={() => remove.mutate(event.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -219,12 +248,13 @@ export default function AgendaPage() {
         );
       }
 
-      const { task } = item;
-      const style     = taskCardStyle(task, item.date);
-      const isEditing = editingTaskDate?.taskId === task.id;
+      const { task }    = item;
+      const style       = taskCardStyle(task, item.date);
+      const isEditing   = editingTaskDate?.taskId === task.id;
+      const warnings    = getMilestoneWarnings(task);
 
       return (
-        <Card key={`t-${task.id}`} className={`${style.container} ${isPast(item.date) && task.status !== "done" ? "opacity-80" : ""}`}>
+        <Card key={`t-${task.id}`} className={style.container}>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-start gap-3">
               <div className="flex-1">
@@ -234,12 +264,8 @@ export default function AgendaPage() {
                     : <Target className={`h-3.5 w-3.5 ${style.icon} shrink-0`} />
                   }
                   <p className="font-medium text-sm">{task.title}</p>
-                  <Badge variant="outline" className={`text-xs ${style.badge}`}>
-                    {style.badgeLabel}
-                  </Badge>
-                  {isToday(item.date) && (
-                    <Badge variant="destructive" className="text-xs">{"Aujourd'hui"}</Badge>
-                  )}
+                  <Badge variant="outline" className={`text-xs ${style.badge}`}>{style.label}</Badge>
+                  {isToday(item.date) && <Badge variant="destructive" className="text-xs">{"Aujourd'hui"}</Badge>}
                 </div>
                 {isEditing ? (
                   <div className="flex items-center gap-2 mt-2">
@@ -249,24 +275,11 @@ export default function AgendaPage() {
                       defaultValue={editingTaskDate?.current}
                       onChange={(e) => setNewDate(e.target.value)}
                     />
-                    <Button
-                      size="sm"
-                      className="h-8 text-xs"
-                      disabled={updateTaskDate.isPending}
-                      onClick={() => {
-                        if (newDate) {
-                          updateTaskDate.mutate({ taskId: task.id, date_target: newDate });
-                        }
-                      }}
-                    >
+                    <Button size="sm" className="h-8 text-xs" disabled={updateTaskDate.isPending}
+                      onClick={() => { if (newDate) updateTaskDate.mutate({ taskId: task.id, date_target: newDate }); }}>
                       Valider
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs"
-                      onClick={() => setEditingTaskDate(null)}
-                    >
+                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setEditingTaskDate(null)}>
                       Annuler
                     </Button>
                   </div>
@@ -282,6 +295,14 @@ export default function AgendaPage() {
                     {dateLabel(item.date)} — cliquer pour modifier
                   </button>
                 )}
+                {/* Milestone warnings */}
+                {warnings.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {warnings.map((w, i) => (
+                      <p key={i} className="text-xs text-muted-foreground italic">{w}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
@@ -292,36 +313,21 @@ export default function AgendaPage() {
 
   return (
     <div className="p-6 lg:p-8 max-w-5xl space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-2xl font-bold">Agenda</h2>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            size="sm"
-            variant={showTheoretical ? "default" : "outline"}
-            className="gap-2"
-            onClick={() => setShowTheoretical((v) => !v)}
-          >
+          <Button size="sm" variant={showTheoretical ? "default" : "outline"} className="gap-2" onClick={() => setShowTheoretical((v) => !v)}>
             <Target className="h-4 w-4" />
             Planning théorique
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2"
-            asChild
-          >
+          <Button size="sm" variant="outline" className="gap-2" asChild>
             <a href={`${process.env.NEXT_PUBLIC_API_URL?.replace(/\/api$/, "")}/api/projects/${id}/export/ical`} download>
               <Download className="h-4 w-4" />
               Exporter .ics
             </a>
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2"
-            onClick={loadCalendarUrl}
-            disabled={loadingCalUrl}
-          >
+          <Button size="sm" variant="outline" className="gap-2" onClick={loadCalendarUrl} disabled={loadingCalUrl}>
             <RefreshCw className={`h-4 w-4 ${loadingCalUrl ? "animate-spin" : ""}`} />
             Abonner au calendrier
           </Button>
@@ -332,6 +338,25 @@ export default function AgendaPage() {
         </div>
       </div>
 
+      {/* ── Pédagogie banners ─────────────────────────────────────────────── */}
+      {isSummerEnd && (
+        <PedagoBanner variant="warning">
+          <strong>Votre chantier se déroule en été.</strong> Prévoyez 2 à 3 semaines de retard liées aux congés des artisans et fournisseurs (fermetures habituelles : 2ᵉ quinzaine de juillet et 1ʳᵉ semaine d&apos;août).
+        </PedagoBanner>
+      )}
+
+      {hasGrosOeuvrePhase && (
+        <PedagoBanner variant="info">
+          <strong>Délais de séchage béton incompressibles :</strong> 28 jours pour une dalle, 21 jours pour les murs. Tout retard dans la phase gros œuvre se répercute sur l&apos;ensemble du chantier.
+        </PedagoBanner>
+      )}
+
+      {isConstruction && (
+        <PedagoBanner variant="tip">
+          <strong>En moyenne, une construction neuve prend 12 à 18 mois</strong> de la signature du CCMI à la remise des clés. Les retards les plus fréquents : artisans indisponibles (3–4 sem.), intempéries (1–2 sem./an), livraisons matériaux (1–2 sem.), problèmes administratifs (variable).
+        </PedagoBanner>
+      )}
+
       {/* Timeline summary */}
       {showTheoretical && firstTarget && lastTarget && durationMonths !== null && (
         <div className="p-3 rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
@@ -340,7 +365,7 @@ export default function AgendaPage() {
             <span>
               Début prévu : <strong>{format(firstTarget, "d MMM yyyy", { locale: fr })}</strong>
               {" → "}
-              Fin prévue : <strong>{format(lastTarget, "d MMM yyyy", { locale: fr })}</strong>
+              Fin estimée : <strong>{format(lastTarget, "d MMM yyyy", { locale: fr })}</strong>
               {" — "}
               Durée totale : <strong>{durationMonths} mois</strong>
             </span>
@@ -354,61 +379,35 @@ export default function AgendaPage() {
             Lien d&apos;abonnement calendrier (webcal://). Copiez-le dans votre app calendrier.
           </p>
           <div className="flex items-center gap-2">
-            <input
-              readOnly
-              value={calendarUrl.webcal_url}
-              className="flex-1 text-xs bg-background border rounded px-2 py-1.5 font-mono"
-              onClick={(e) => (e.target as HTMLInputElement).select()}
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              className="text-xs shrink-0"
-              onClick={() => {
-                navigator.clipboard.writeText(calendarUrl.webcal_url);
-                toast.success("Lien copié !");
-              }}
-            >
+            <input readOnly value={calendarUrl.webcal_url} className="flex-1 text-xs bg-background border rounded px-2 py-1.5 font-mono" onClick={(e) => (e.target as HTMLInputElement).select()} />
+            <Button size="sm" variant="secondary" className="text-xs shrink-0" onClick={() => { navigator.clipboard.writeText(calendarUrl.webcal_url); toast.success("Lien copié !"); }}>
               Copier
             </Button>
           </div>
-          <a
-            href={calendarUrl.webcal_url}
-            className="text-xs text-primary hover:underline block"
-          >
+          <a href={calendarUrl.webcal_url} className="text-xs text-primary hover:underline block">
             Ouvrir dans l&apos;app calendrier →
           </a>
         </div>
       )}
 
       {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)}
-        </div>
+        <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)}</div>
       ) : items.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p>
-            {showTheoretical
-              ? "Aucune date théorique calculée — ajoutez une date de début dans les paramètres du projet"
-              : "Aucune date confirmée"}
-          </p>
+          <p>{showTheoretical ? "Aucune date théorique — ajoutez une date de début dans les paramètres du projet" : "Aucune date confirmée"}</p>
         </div>
       ) : (
         <div className="space-y-6">
           {upcoming.length > 0 && (
             <div>
-              <p className="text-sm font-medium text-muted-foreground mb-3">
-                À venir ({upcoming.length})
-              </p>
+              <p className="text-sm font-medium text-muted-foreground mb-3">À venir ({upcoming.length})</p>
               <div className="space-y-3">{renderItems(upcoming)}</div>
             </div>
           )}
           {past.length > 0 && (
             <div>
-              <p className="text-sm font-medium text-muted-foreground mb-3">
-                Passés ({past.length})
-              </p>
+              <p className="text-sm font-medium text-muted-foreground mb-3">Passés ({past.length})</p>
               <div className="space-y-3">{renderItems(past)}</div>
             </div>
           )}
@@ -417,63 +416,34 @@ export default function AgendaPage() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Nouvel événement</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Nouvel événement</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
               <Label>Titre *</Label>
-              <Input
-                placeholder="Réunion de chantier"
-                value={form.title}
-                onChange={(e) => set("title", e.target.value)}
-              />
+              <Input placeholder="Réunion de chantier" value={form.title} onChange={(e) => set("title", e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Début *</Label>
-                <Input
-                  type="datetime-local"
-                  value={form.date_start}
-                  onChange={(e) => set("date_start", e.target.value)}
-                />
+                <Input type="datetime-local" value={form.date_start} onChange={(e) => set("date_start", e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label>Fin</Label>
-                <Input
-                  type="datetime-local"
-                  value={form.date_end}
-                  onChange={(e) => set("date_end", e.target.value)}
-                />
+                <Input type="datetime-local" value={form.date_end} onChange={(e) => set("date_end", e.target.value)} />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>Rappel (jours avant)</Label>
-              <Input
-                type="number"
-                placeholder="1"
-                min="0"
-                value={form.reminder_days}
-                onChange={(e) => set("reminder_days", e.target.value)}
-              />
+              <Input type="number" placeholder="1" min="0" value={form.reminder_days} onChange={(e) => set("reminder_days", e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>Description</Label>
-              <Textarea
-                rows={2}
-                value={form.description}
-                onChange={(e) => set("description", e.target.value)}
-              />
+              <Textarea rows={2} value={form.description} onChange={(e) => set("description", e.target.value)} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Annuler
-            </Button>
-            <Button
-              onClick={() => create.mutate(form)}
-              disabled={!form.title.trim() || !form.date_start || create.isPending}
-            >
+            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+            <Button onClick={() => create.mutate(form)} disabled={!form.title.trim() || !form.date_start || create.isPending}>
               {create.isPending ? "Création…" : "Créer"}
             </Button>
           </DialogFooter>

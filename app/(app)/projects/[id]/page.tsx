@@ -105,6 +105,19 @@ export default function ProjectOverviewPage() {
 
   const project = data?.data;
 
+  function computeRealisticDate(proj: Project): Date | null {
+    if (!proj.date_end_target || !proj.date_start) return null;
+    const start = new Date(proj.date_start);
+    const end = new Date(proj.date_end_target);
+    const totalDays = Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const bufferDays = Math.ceil(totalDays * 0.15);
+    const startM = start.getMonth() + 1;
+    const endM = end.getMonth() + 1;
+    const spansSummer = startM <= 8 && endM >= 7;
+    const summerBuffer = spansSummer ? 14 : 0;
+    return new Date(end.getTime() + (bufferDays + summerBuffer) * 24 * 60 * 60 * 1000);
+  }
+
   if (isLoading) {
     return (
       <div className="p-6 lg:p-8 max-w-6xl space-y-6">
@@ -260,12 +273,32 @@ export default function ProjectOverviewPage() {
             )}
             {project.date_end_target && (
               <div>
-                <dt className="text-muted-foreground">Livraison prévue</dt>
+                <dt className="text-muted-foreground">Fin estimée (optimiste)</dt>
                 <dd className="font-medium mt-0.5">
                   {format(new Date(project.date_end_target), "d MMMM yyyy", { locale: fr })}
                 </dd>
               </div>
             )}
+            {project.date_end_target && project.date_start && (() => {
+              const realistic = computeRealisticDate(project);
+              if (!realistic) return null;
+              return (
+                <div>
+                  <dt className="text-muted-foreground flex items-center gap-1">
+                    Fin estimée (réaliste)
+                    <span
+                      title="La date réaliste intègre les aléas classiques d'un chantier : congés artisans, intempéries, délais de livraison."
+                      className="cursor-help"
+                    >
+                      <Info className="h-3 w-3 text-muted-foreground/70" />
+                    </span>
+                  </dt>
+                  <dd className="font-medium mt-0.5">
+                    {format(realistic, "d MMMM yyyy", { locale: fr })}
+                  </dd>
+                </div>
+              );
+            })()}
             <div>
               <dt className="text-muted-foreground">Statut</dt>
               <dd className="mt-0.5">
