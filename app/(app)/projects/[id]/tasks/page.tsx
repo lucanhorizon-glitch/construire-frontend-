@@ -19,7 +19,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, ChevronDown, ChevronRight, Star, Euro, Paperclip, Plus, X, Lock, Zap } from "lucide-react";
+import { GripVertical, ChevronDown, ChevronRight, Star, Euro, Paperclip, Plus, X, Lock, Zap, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import TaskStatusBadge from "@/components/project/TaskStatusBadge";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -184,21 +185,25 @@ function TaskRow({ task, projectId, sortable }: TaskRowProps) {
 
 // ── Locked task row (free tier, tasks beyond index 3) ─────────────────────────
 
-function LockedTaskRow({ task }: { task: Task }) {
+function LockedTaskRow({ task, onUpgrade }: { task: Task; onUpgrade: () => void }) {
+  const firstWord = task.title.split(" ")[0];
+
   return (
-    <div className="flex items-center gap-3 p-3 bg-muted/20 rounded-lg border border-dashed select-none">
+    <button
+      onClick={onUpgrade}
+      className="w-full flex items-center gap-3 p-3 bg-muted/20 rounded-lg border border-dashed select-none cursor-pointer hover:bg-muted/30 transition-colors text-left"
+    >
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-muted-foreground truncate">{task.title}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <div className="h-2.5 w-16 rounded bg-muted/70" />
-          <div className="h-2.5 w-10 rounded bg-muted/70" />
+        <div className="flex items-center gap-1 text-sm font-medium">
+          <span>{firstWord}</span>
+          <span className="blur-sm text-muted-foreground pointer-events-none">••••••••</span>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <Lock className="h-3.5 w-3.5 text-muted-foreground/40" />
-        <div className="h-7 w-24 rounded bg-muted/60" />
+        <Lock className="h-3.5 w-3.5 text-muted-foreground/60" />
+        <div className="h-6 w-20 rounded bg-muted/70 blur-sm" />
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -249,11 +254,14 @@ interface PhaseGroupProps {
   isOpen: boolean;
   onToggle: () => void;
   isPremium: boolean;
+  onLockedClick: () => void;
+  onBannerClick: () => void;
+  bannerPending?: boolean;
 }
 
 const FREE_VISIBLE_TASKS = 3;
 
-function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle, isPremium }: PhaseGroupProps) {
+function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle, isPremium, onLockedClick, onBannerClick, bannerPending }: PhaseGroupProps) {
   const queryClient = useQueryClient();
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskForm, setNewTaskForm] = useState<NewTaskForm>(() => makeEmptyForm(phase.title));
@@ -337,7 +345,7 @@ function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle, isPremiu
                 />
               ))}
               {lockedFiltered.map((task) => (
-                <LockedTaskRow key={task.id} task={task} />
+                <LockedTaskRow key={task.id} task={task} onUpgrade={onLockedClick} />
               ))}
               {filtered.length === 0 && (
                 <p className="text-sm text-muted-foreground py-3 text-center">
@@ -346,6 +354,16 @@ function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle, isPremiu
               )}
             </div>
           </SortableContext>
+
+          {hasLocked && lockedFiltered.length > 0 && (
+            <button
+              onClick={onBannerClick}
+              disabled={bannerPending}
+              className="w-full mt-1 py-2.5 px-4 text-sm text-center rounded-lg border border-dashed border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/40 transition-colors disabled:opacity-60"
+            >
+              🔒 {lockedFiltered.length} étape{lockedFiltered.length > 1 ? "s" : ""} masquée{lockedFiltered.length > 1 ? "s" : ""} — Débloquez ce projet pour accéder à la checklist complète (14,99€)
+            </button>
+          )}
 
           {filterStatus === "all" && (
             <div className="pl-2">
@@ -476,6 +494,7 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
   const [filterStatus, setFilterStatus] = useState<TaskStatus | "all">("all");
   const [openPhaseId, setOpenPhaseId] = useState<number | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -605,6 +624,9 @@ export default function TasksPage() {
               isOpen={effectiveOpenId === phase.id}
               onToggle={() => togglePhase(phase.id)}
               isPremium={isPremium}
+              onLockedClick={() => setUpgradeOpen(true)}
+              onBannerClick={() => stripeCheckout.mutate()}
+              bannerPending={stripeCheckout.isPending}
             />
           ))}
         </div>
@@ -615,18 +637,58 @@ export default function TasksPage() {
         <div className="fixed bottom-0 left-0 right-0 z-20 px-4 py-4 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-none">
           <div className="max-w-6xl mx-auto pointer-events-auto">
             <button
-              onClick={() => stripeCheckout.mutate()}
-              disabled={stripeCheckout.isPending}
+              onClick={() => setUpgradeOpen(true)}
               className="w-full py-3.5 px-6 bg-primary text-primary-foreground rounded-xl font-semibold shadow-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 text-sm"
             >
               <Zap className="h-4 w-4" />
-              {stripeCheckout.isPending
-                ? "Redirection…"
-                : "Débloquer toutes les étapes — 14,99 €"}
+              Débloquer toutes les étapes — 14,99 €
             </button>
           </div>
         </div>
       )}
+
+      {/* Upgrade modal */}
+      <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-amber-500" />
+              Passer ce projet en Premium
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="text-center">
+              <p className="text-3xl font-bold">14,99 €</p>
+              <p className="text-sm text-muted-foreground">paiement unique par projet</p>
+            </div>
+            <ul className="space-y-2 text-sm">
+              {[
+                "Checklist complète — toutes les étapes débloquées",
+                "Intervenants illimités",
+                "Export PDF & Excel",
+                "Calendrier iCal partageable",
+                "Documents & photos illimités",
+              ].map((item) => (
+                <li key={item} className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUpgradeOpen(false)}>Plus tard</Button>
+            <Button
+              onClick={() => { setUpgradeOpen(false); stripeCheckout.mutate(); }}
+              disabled={stripeCheckout.isPending}
+              className="gap-2"
+            >
+              <Zap className="h-4 w-4" />
+              {stripeCheckout.isPending ? "Redirection…" : "Passer Premium"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
