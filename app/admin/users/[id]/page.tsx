@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { ArrowLeft, ExternalLink, ShieldCheck, ShieldOff, Zap, ZapOff, HardHat, Gift } from "lucide-react";
+import { ArrowLeft, ExternalLink, ShieldCheck, ShieldOff, Zap, ZapOff, HardHat, Gift, Infinity } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -49,6 +49,7 @@ interface AdminUserDetail {
   pro_category?: string | null;
   company_name?: string | null;
   company_logo_url?: string | null;
+  unlimited_credits: boolean;
   created_at: string;
   projects: {
     id: number;
@@ -66,13 +67,14 @@ interface AdminUserDetail {
     stripe_session: string;
     paid_at: string;
   }[];
-  credits?: {
-    remaining: number;
+  credits: {
+    remaining: number | null;
+    unlimited: boolean;
     total_purchased: number;
     total_gifted: number;
     total_used: number;
     history: CreditHistoryEntry[];
-  } | null;
+  };
 }
 
 function creditTypeBadge(type: string) {
@@ -104,8 +106,7 @@ export default function AdminUserDetailPage() {
   });
 
   const grantPremium = useMutation({
-    mutationFn: (projectId: number) =>
-      api.post(`/admin/projects/${projectId}/grant-premium`),
+    mutationFn: (projectId: number) => api.post(`/admin/projects/${projectId}/grant-premium`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-user", id] });
       toast.success("Premium accordé !");
@@ -114,8 +115,7 @@ export default function AdminUserDetailPage() {
   });
 
   const revokePremium = useMutation({
-    mutationFn: (projectId: number) =>
-      api.post(`/admin/projects/${projectId}/revoke-premium`),
+    mutationFn: (projectId: number) => api.post(`/admin/projects/${projectId}/revoke-premium`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-user", id] });
       toast.success("Premium révoqué");
@@ -127,10 +127,19 @@ export default function AdminUserDetailPage() {
     mutationFn: () => api.post(`/admin/users/${id}/gift-credits`, { amount: giftAmount }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-user", id] });
-      toast.success(`${giftAmount} crédit(s) offert(s)`);
+      toast.success(`${giftAmount} crédit${giftAmount > 1 ? "s" : ""} offert${giftAmount > 1 ? "s" : ""}`);
       setGiftAmount(1);
     },
     onError: () => toast.error("Erreur lors de l'attribution des crédits"),
+  });
+
+  const toggleUnlimited = useMutation({
+    mutationFn: () => api.post(`/admin/users/${id}/toggle-unlimited-credits`, {}),
+    onSuccess: (res: { unlimited_credits: boolean }) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-user", id] });
+      toast.success(res.unlimited_credits ? "Crédits illimités activés" : "Crédits illimités désactivés");
+    },
+    onError: () => toast.error("Erreur"),
   });
 
   if (isLoading) {
@@ -149,11 +158,12 @@ export default function AdminUserDetailPage() {
   if (!user) return null;
 
   const credits = user.credits;
+  const isUnlimited = credits?.unlimited ?? false;
 
   return (
     <TooltipProvider>
       <div className="p-6 space-y-6">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -171,6 +181,12 @@ export default function AdminUserDetailPage() {
             <Badge className="gap-1 bg-blue-600 text-white border-0">
               <HardHat className="h-3 w-3" />
               {user.pro_category ? (PRO_CATEGORY_LABELS[user.pro_category] ?? "Pro") : "Pro"}
+            </Badge>
+          )}
+          {isUnlimited && (
+            <Badge className="gap-1 bg-violet-600 text-white border-0">
+              <Infinity className="h-3 w-3" />
+              Crédits illimités
             </Badge>
           )}
         </div>
@@ -246,11 +262,11 @@ export default function AdminUserDetailPage() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Badge className="text-xs bg-amber-500 text-white border-0 cursor-default">
-                                Premium
+                                {p.premium_granted_by_admin ? "Premium (crédit)" : "Premium"}
                               </Badge>
                             </TooltipTrigger>
                             <TooltipContent>
-                              {p.premium_granted_by_admin ? "Offert par admin" : "Payé"}
+                              {p.premium_granted_by_admin ? "Premium via crédit offert" : "Acheté via Stripe"}
                             </TooltipContent>
                           </Tooltip>
                         )}
@@ -323,97 +339,123 @@ export default function AdminUserDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Credits — pro only */}
-        {user.account_type === "pro" && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <HardHat className="h-4 w-4 text-blue-600" />
-                Crédits pro
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              {/* Balance summary */}
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: "Restants",  value: credits?.remaining      ?? 0, highlight: true },
-                  { label: "Achetés",   value: credits?.total_purchased ?? 0, highlight: false },
-                  { label: "Utilisés",  value: credits?.total_used      ?? 0, highlight: false },
-                  { label: "Offerts",   value: credits?.total_gifted    ?? 0, highlight: false },
-                ].map((s) => (
-                  <div key={s.label} className="p-3 rounded-lg border bg-muted/30">
-                    <p className="text-xs text-muted-foreground mb-0.5">{s.label}</p>
-                    <p className={`text-xl font-bold ${s.highlight && s.value === 0 ? "text-destructive" : ""}`}>{s.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* History */}
-              {credits?.history && credits.history.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Historique</p>
-                  <div className="rounded-lg border overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50">
-                        <tr>
-                          <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Date</th>
-                          <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Type</th>
-                          <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs hidden sm:table-cell">Pack</th>
-                          <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs">Crédits</th>
-                          <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs hidden sm:table-cell">Prix</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {credits.history.map((entry) => (
-                          <tr key={entry.id}>
-                            <td className="px-3 py-2 text-xs text-muted-foreground">
-                              {format(new Date(entry.created_at), "d MMM yyyy", { locale: fr })}
-                            </td>
-                            <td className="px-3 py-2">{creditTypeBadge(entry.type)}</td>
-                            <td className="px-3 py-2 text-xs text-muted-foreground hidden sm:table-cell">{entry.pack_type ?? "—"}</td>
-                            <td className="px-3 py-2 text-right font-medium text-xs">
-                              {entry.type === "usage" ? `−${entry.amount}` : `+${entry.amount}`}
-                            </td>
-                            <td className="px-3 py-2 text-right text-xs text-muted-foreground hidden sm:table-cell">
-                              {entry.price_eur != null ? `${entry.price_eur.toFixed(2)} €` : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+        {/* Credits — all users */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Gift className="h-4 w-4 text-emerald-600" />
+              Crédits projets
+              {isUnlimited && (
+                <Badge className="gap-1 bg-violet-600 text-white border-0 text-xs ml-1">
+                  <Infinity className="h-2.5 w-2.5" />
+                  Illimité
+                </Badge>
               )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Balance summary */}
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                {
+                  label: "Restants",
+                  value: isUnlimited ? "∞" : (credits?.remaining ?? 0),
+                  highlight: !isUnlimited,
+                  zero: !isUnlimited && (credits?.remaining ?? 0) === 0,
+                },
+                { label: "Achetés",  value: credits?.total_purchased ?? 0, highlight: false, zero: false },
+                { label: "Utilisés", value: credits?.total_used      ?? 0, highlight: false, zero: false },
+                { label: "Offerts",  value: credits?.total_gifted    ?? 0, highlight: false, zero: false },
+              ].map((s) => (
+                <div key={s.label} className="p-3 rounded-lg border bg-muted/30">
+                  <p className="text-xs text-muted-foreground mb-0.5">{s.label}</p>
+                  <p className={`text-xl font-bold ${s.zero ? "text-destructive" : s.value === "∞" ? "text-violet-600" : ""}`}>
+                    {s.value}
+                  </p>
+                </div>
+              ))}
+            </div>
 
-              {/* Gift credits form */}
+            {/* History */}
+            {credits?.history && credits.history.length > 0 && (
               <div>
-                <Separator className="mb-4" />
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Offrir des crédits</p>
-                <div className="flex items-end gap-3">
-                  <div className="space-y-1.5 flex-1 max-w-[120px]">
-                    <Label className="text-xs">Nombre</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={giftAmount}
-                      onChange={e => setGiftAmount(Math.max(1, Math.min(100, Number(e.target.value))))}
-                      className="h-9"
-                    />
-                  </div>
-                  <Button
-                    className="gap-2 h-9"
-                    onClick={() => giftCredits.mutate()}
-                    disabled={giftCredits.isPending || giftAmount < 1}
-                  >
-                    <Gift className="h-4 w-4" />
-                    {giftCredits.isPending ? "En cours…" : `Offrir ${giftAmount} crédit${giftAmount > 1 ? "s" : ""}`}
-                  </Button>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Historique</p>
+                <div className="rounded-lg border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Date</th>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Type</th>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs hidden sm:table-cell">Pack</th>
+                        <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs">Crédits</th>
+                        <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs hidden sm:table-cell">Prix</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {credits.history.map((entry) => (
+                        <tr key={entry.id}>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {format(new Date(entry.created_at), "d MMM yyyy", { locale: fr })}
+                          </td>
+                          <td className="px-3 py-2">{creditTypeBadge(entry.type)}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground hidden sm:table-cell">{entry.pack_type ?? "—"}</td>
+                          <td className="px-3 py-2 text-right font-medium text-xs">
+                            {entry.type === "usage" ? `−${entry.amount}` : `+${entry.amount}`}
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs text-muted-foreground hidden sm:table-cell">
+                            {entry.price_eur != null ? `${entry.price_eur.toFixed(2)} €` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
+
+            {/* Gift credits + unlimited toggle */}
+            <div>
+              <Separator className="mb-4" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Offrir des crédits</p>
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="space-y-1.5 flex-1 min-w-[100px] max-w-[140px]">
+                  <Label className="text-xs">Nombre de projets</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={giftAmount}
+                    onChange={e => setGiftAmount(Math.max(1, Math.min(1000, Number(e.target.value))))}
+                    className="h-9"
+                    disabled={isUnlimited}
+                  />
+                </div>
+                <Button
+                  className="gap-2 h-9"
+                  onClick={() => giftCredits.mutate()}
+                  disabled={giftCredits.isPending || giftAmount < 1 || isUnlimited}
+                >
+                  <Gift className="h-4 w-4" />
+                  {giftCredits.isPending ? "En cours…" : `Offrir ${giftAmount} crédit${giftAmount > 1 ? "s" : ""}`}
+                </Button>
+                <Button
+                  variant={isUnlimited ? "destructive" : "outline"}
+                  className="gap-2 h-9"
+                  onClick={() => toggleUnlimited.mutate()}
+                  disabled={toggleUnlimited.isPending}
+                >
+                  <Infinity className="h-4 w-4" />
+                  {isUnlimited ? "Désactiver illimité" : "Activer illimité"}
+                </Button>
+              </div>
+              {isUnlimited && (
+                <p className="text-xs text-violet-600 mt-2">
+                  Cet utilisateur peut créer des projets sans limite de crédits.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </TooltipProvider>
   );
