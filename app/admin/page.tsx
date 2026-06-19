@@ -5,7 +5,7 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { Users, FolderOpen, CreditCard, CheckSquare, TrendingUp } from "lucide-react";
+import { Users, FolderOpen, CreditCard, CheckSquare, TrendingUp, HardHat } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
@@ -17,6 +17,7 @@ interface DashboardData {
   projects: { total: number; active: number; archived: number; neuf: number; renovation: number; premium: number };
   revenue: { total: number; count: number };
   tasks_done: number;
+  pro_accounts?: { total: number; constructeur: number; architecte: number; maitre_oeuvre: number; cmiste: number };
   charts: {
     daily: { date: string; count: number; amount: number }[];
     types: { name: string; value: number }[];
@@ -66,8 +67,8 @@ export default function AdminDashboard() {
   if (isLoading) {
     return (
       <div className="p-6 space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-24" />)}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-24" />)}
         </div>
         <div className="grid md:grid-cols-2 gap-6">
           {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-64" />)}
@@ -90,7 +91,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard
           title="Utilisateurs"
           value={d?.users.total ?? 0}
@@ -124,6 +125,13 @@ export default function AdminDashboard() {
           value={d?.tasks_done ?? 0}
           icon={CheckSquare}
           color="text-slate-500"
+        />
+        <StatCard
+          title="Comptes pro"
+          value={d?.pro_accounts?.total ?? 0}
+          sub={`${d?.pro_accounts?.constructeur ?? 0} const. · ${d?.pro_accounts?.architecte ?? 0} arch.`}
+          icon={HardHat}
+          color="text-blue-500"
         />
       </div>
 

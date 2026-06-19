@@ -19,7 +19,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, ChevronDown, ChevronRight, Star, Euro, Paperclip, Plus, X, Lock, Zap, Check } from "lucide-react";
+import { GripVertical, ChevronDown, ChevronRight, Star, Euro, Paperclip, Plus, X, Lock, Zap, Check, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -34,6 +34,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import type { Phase, Project, Task, TaskStatus } from "@/lib/types";
 import Link from "next/link";
+import { useAuthStore } from "@/store/authStore";
 
 const statusOptions: { value: TaskStatus | "all"; label: string }[] = [
   { value: "all", label: "Tous les statuts" },
@@ -50,9 +51,10 @@ interface TaskRowProps {
   task: Task;
   projectId: string;
   sortable?: boolean;
+  isConstructeurView?: boolean;
 }
 
-function TaskRow({ task, projectId, sortable }: TaskRowProps) {
+function TaskRow({ task, projectId, sortable, isConstructeurView }: TaskRowProps) {
   const queryClient = useQueryClient();
 
   const {
@@ -81,11 +83,19 @@ function TaskRow({ task, projectId, sortable }: TaskRowProps) {
     onError: () => toast.error("Erreur lors de la mise à jour"),
   });
 
+  const toggleEditable = useMutation({
+    mutationFn: () => api.post(`/pro/tasks/${task.id}/toggle-editable`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["project-tasks", projectId] });
+    },
+    onError: () => toast.error("Erreur lors de la mise à jour"),
+  });
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 p-3 bg-background rounded-lg border hover:shadow-sm transition-shadow group"
+      className={`flex items-center gap-3 p-3 bg-background rounded-lg border hover:shadow-sm transition-shadow group border-l-4 ${task.client_editable ? "border-l-green-500" : "border-l-transparent"}`}
     >
       {sortable && (
         <div
@@ -178,6 +188,17 @@ function TaskRow({ task, projectId, sortable }: TaskRowProps) {
               ))}
           </SelectContent>
         </Select>
+        {isConstructeurView && (
+          <button
+            type="button"
+            onClick={() => toggleEditable.mutate()}
+            disabled={toggleEditable.isPending}
+            title={task.client_editable ? "Désactiver l'édition client" : "Autoriser l'édition client"}
+            className={`p-1 rounded transition-colors ${task.client_editable ? "text-green-600 hover:text-green-700" : "text-muted-foreground/50 hover:text-muted-foreground"}`}
+          >
+            {task.client_editable ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -257,11 +278,12 @@ interface PhaseGroupProps {
   onLockedClick: () => void;
   onBannerClick: () => void;
   bannerPending?: boolean;
+  isConstructeurView?: boolean;
 }
 
 const FREE_VISIBLE_TASKS = 3;
 
-function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle, isPremium, onLockedClick, onBannerClick, bannerPending }: PhaseGroupProps) {
+function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle, isPremium, onLockedClick, onBannerClick, bannerPending, isConstructeurView }: PhaseGroupProps) {
   const queryClient = useQueryClient();
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskForm, setNewTaskForm] = useState<NewTaskForm>(() => makeEmptyForm(phase.title));
@@ -342,6 +364,7 @@ function PhaseGroup({ phase, projectId, filterStatus, isOpen, onToggle, isPremiu
                   task={task}
                   projectId={projectId}
                   sortable={filterStatus === "all" && isPremium}
+                  isConstructeurView={isConstructeurView}
                 />
               ))}
               {lockedFiltered.map((task) => (
@@ -496,6 +519,9 @@ export default function TasksPage() {
   const [openPhaseId, setOpenPhaseId] = useState<number | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
 
+  const { user } = useAuthStore();
+  const isConstructeurView = user?.account_type === "pro";
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, {
@@ -627,6 +653,7 @@ export default function TasksPage() {
               onLockedClick={() => setUpgradeOpen(true)}
               onBannerClick={() => stripeCheckout.mutate()}
               bannerPending={stripeCheckout.isPending}
+              isConstructeurView={isConstructeurView}
             />
           ))}
         </div>

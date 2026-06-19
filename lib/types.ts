@@ -5,6 +5,11 @@ export interface User {
   phone?: string;
   is_admin?: boolean;
   is_premium?: boolean;
+  account_type?: 'client' | 'pro' | 'admin';
+  pro_category?: 'constructeur' | 'architecte' | 'maitre_oeuvre' | 'cmiste' | null;
+  company_name?: string | null;
+  company_logo_url?: string | null;
+  managing_pro?: { company_name?: string | null; company_logo_url?: string | null } | null;
   projects_count?: number;
   created_at: string;
 }
@@ -109,6 +114,7 @@ export interface Task {
   updated_at: string;
   documents?: Document[];
   contacts?: Contact[];
+  client_editable?: boolean;
 }
 
 export interface Document {

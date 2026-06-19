@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, FolderOpen, Moon, Sun, LogOut, HardHat, User, ChevronUp,
 } from "lucide-react";
@@ -31,6 +32,14 @@ export default function Sidebar() {
   const { user, clearAuth } = useAuthStore();
   const router = useRouter();
 
+  // Fetch user profile for pro branding (cached, stale 5 min)
+  const { data: profileData } = useQuery({
+    queryKey: ["user-profile-sidebar"],
+    queryFn: () => api.get<{ data: { managing_pro?: { company_name?: string | null; company_logo_url?: string | null } | null } }>("/user/profile"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const managingPro = profileData?.data?.managing_pro ?? null;
+
   async function handleLogout() {
     try { await api.post("/auth/logout"); } catch {}
     clearAuth();
@@ -46,9 +55,29 @@ export default function Sidebar() {
 
   return (
     <aside className="hidden lg:flex flex-col w-64 border-r bg-card h-screen sticky top-0">
-      <div className="flex items-center gap-2 p-6 border-b">
-        <HardHat className="h-6 w-6 text-primary" />
-        <span className="font-bold text-lg">Suivi Construction</span>
+      <div className="flex items-center gap-2 p-6 border-b min-w-0">
+        {managingPro ? (
+          <>
+            {managingPro.company_logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={managingPro.company_logo_url}
+                alt=""
+                className="h-7 w-auto max-w-[36px] object-contain shrink-0"
+              />
+            ) : (
+              <HardHat className="h-6 w-6 text-primary shrink-0" />
+            )}
+            <span className="font-bold text-lg truncate">
+              {managingPro.company_name ?? "Suivi Construction"}
+            </span>
+          </>
+        ) : (
+          <>
+            <HardHat className="h-6 w-6 text-primary shrink-0" />
+            <span className="font-bold text-lg">Suivi Construction</span>
+          </>
+        )}
       </div>
 
       <nav className="flex-1 p-4 space-y-1">
@@ -112,6 +141,12 @@ export default function Sidebar() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {managingPro && (
+          <p className="text-[10px] text-muted-foreground/40 text-center pt-1">
+            Propulsé par Suivi Construction
+          </p>
+        )}
       </div>
     </aside>
   );

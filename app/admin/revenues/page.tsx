@@ -23,6 +23,7 @@ interface Payment {
 interface RevenuesData {
   data: Payment[];
   total_revenue: number;
+  admin_granted_count: number;
   meta: { total: number; current_page: number; last_page: number };
 }
 
@@ -39,6 +40,7 @@ export default function AdminRevenuesPage() {
   const payments = data?.data ?? [];
   const totalRevenue = data?.total_revenue ?? 0;
   const total = data?.meta?.total ?? 0;
+  const adminGrantedCount = data?.admin_granted_count ?? 0;
 
   return (
     <div className="p-6 space-y-5">
@@ -63,7 +65,10 @@ export default function AdminRevenuesPage() {
           <p className="text-3xl font-bold">
             {totalRevenue.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">{total} paiement{total !== 1 ? "s" : ""} Stripe</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {total} paiement{total !== 1 ? "s" : ""} Stripe réels
+            {adminGrantedCount > 0 && ` · ${adminGrantedCount} premium offert${adminGrantedCount !== 1 ? "s" : ""} admin (non comptabilisé${adminGrantedCount !== 1 ? "s" : ""})`}
+          </p>
         </div>
       </div>
 
